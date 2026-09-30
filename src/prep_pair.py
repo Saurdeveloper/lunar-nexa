@@ -99,10 +99,6 @@ class NacGrid:
         s = self.scale
         x = (col0 - self.soff + 0.5) * s
         y = (self.loff - row0 - 0.5) * s
-        if "POLAR" in self.proj and self.clat < 0:
-            # our south-polar formulas use +y away from the pole; GDAL's polar stereographic uses
-            # y = -rho cos(dlon) for the south pole, so flip the sign of y
-            return f"{s}\n0\n0\n{s}\n{x}\n{-y}\n"
         return f"{s}\n0\n0\n{-s}\n{x}\n{y}\n"
 
 
@@ -178,6 +174,9 @@ def main() -> None:
     ap.add_argument("--half-m", type=float, default=1000.0)
     ap.add_argument("--out", required=True)
     ap.add_argument("--margin-px", type=int, default=100, help="extra reference pixels around the footprint")
+    ap.add_argument("--shift-ref-px", type=float, nargs=2, default=None, metavar=("DX", "DY"),
+                    help="correct the product geolocation by this many reference pixels (from coarse_locate)")
+    ap.add_argument("--shift-from", default=None, help="meta.json whose coarse_locate.offset_ref_px to apply")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -208,6 +207,11 @@ def main() -> None:
     raw_xy = sel[["Pixel", "Scan"]].to_numpy(float) - [x0, y0]          # crop coords
     ns, nl = nac.latlon_to_pix(sel.Latitude.to_numpy(), sel.Longitude.to_numpy())
     nac_xy = np.stack([ns, nl], 1)
+    shift = a.shift_ref_px
+    if a.shift_from:
+        shift = json.loads(Path(a.shift_from).read_text())["coarse_locate"]["offset_ref_px"]
+    if shift:
+        nac_xy = nac_xy + np.asarray(shift, float)
     fwd, fwd_meta = fit_poly(raw_xy, nac_xy, 3)
     fit_res = np.linalg.norm(fwd(raw_xy) - nac_xy, axis=1)
     corners = fwd(np.array([[0, 0], [w, 0], [w, h], [0, h]], float))
@@ -248,6 +252,7 @@ def main() -> None:
         "geometry_grid_fit_px": {"rms": float(np.sqrt((fit_res**2).mean())), "max": float(fit_res.max()),
                                  "n": int(len(fit_res))},
         "scale_ratio_ref_over_src": ratio,
+        "geolocation_shift_ref_px": list(shift) if shift else None,
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
 

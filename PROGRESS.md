@@ -1,6 +1,6 @@
 # PROGRESS: SIH26166 lunar image correspondence
 
-**Last updated:** Wed 30 Sep 2026
+**Last updated:** Wed 30 Sep 2026 (evening)
 **Owner of all tasks:** Aranyak Dutta (Claude does the build work)
 **Compute:** RTX 4050 laptop GPU, 6 GB VRAM
 **SIH stage:** Idea submission. Deadline flexible (portal date not yet confirmed).
@@ -12,6 +12,7 @@
 - **Phase 2 (Data): PASSED for pairs p01a, p01b, p03.** Downloaded by Aranyak from chmapbrowse + LROC Data Portal (see `docs/DATA_CHECKLIST.md`); zips tested; manifest filled. Missing: DTM `.TIF` files for both sites, Apollo 11 OHRC strip.
 - **Phase 3 (Coarse alignment): PASSED for p01a** (metadata-only offset ≈ 23 m / 23 NAC px). `src/prep_pair.py` cuts the site from the Ch-2 zip and NAC .IMG and maps the Ch-2 image onto the NAC grid using the product's geometry grid (grid fit RMS 0.12 px). p01b and p03 coarse offsets not yet verified (phase correlation fails under their lighting).
 - **Phase 4 (Baseline): PASSED on p01a, FAILS on p01b and p03.** See real results below.
+- **Phase 5 (Robustness) started, 30 Sep: Option A (sun-matched DTM rendering) chosen and working.** p01b and p03 now register (2.45 m and 2.19 m checkpoint RMSE, 576/615 inliers, 95–98% coverage). Full ablation: `results/relight/ablation_real.md`.
 
 ## Plan
 
@@ -35,7 +36,22 @@
 - 4 unit tests pass (transform fitting, outlier rejection, known sub-pixel shift, checkpoint split).
 - Quality gate: a result is flagged if it has fewer than 20 inliers or checkpoint RMSE above 1 px. On the benchmark it caught the one silent failure; it also flagged 14 correct but weak runs.
 
-## Results: real pairs (Chandrayaan-3 landing site, reference NAC M1442997156 ortho, 2023-07-03)
+## Results: illumination handling (Option A) on real pairs
+
+| Step | p01a OHRC 2024 (304°/10.8°) | p01b OHRC 2023 (277°/**2.2°**) | p03 TMC-2 (**53°**/17.2°) |
+| --- | --- | --- | --- |
+| 0. Baseline (metadata position, match NAC photo) | ✅ 0.55 m | ❌ | ❌ |
+| 1. Sun-matched DTM render finds true position | 18 m offset | **1.0 km** offset | **3.8 km** offset (along-track) |
+| 2. Step 1 + match NAC photo | – | ❌ | ❌ |
+| 3. Step 1 + match DTM rendered at source sun + DTM calibration | ✅ 2.27 m | ✅ **2.45 m**, 576 inl., 95% cov. | ✅ **2.19 m** (0.73 px @3 m), 615 inl., 84% sub-px, 98% cov. |
+| 4. Step 3 + shadow-edge filter (novelty 2) | 2.24 m | 2.50 m | 2.08 m |
+
+- Absolute check on p01a: step 3 vs validated baseline transform agree to **0.95 m RMS (median 0.61 m), no bias**.
+- DTM-vs-orthophoto calibration (render at NAC's own sun, estimated az 324°/el 8°): offset (2.98, 4.62) m, repeatable (3.05, 4.62) on a second crop; removed a 5.4 m bias.
+- Accuracy of the render path is limited by the 3 m DTM; step 3 checkpoint RMSE is on 3 m blocks.
+- Shadow-edge filter: no meaningful effect once lighting is matched; off by default.
+
+## Results: real pairs (baseline) (Chandrayaan-3 landing site, reference NAC M1442997156 ortho, 2023-07-03)
 
 | Pair | Source | Sun az / el | Best matcher | Inliers | Checkpoint RMSE | Sub-px rate | Coverage | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -77,18 +93,21 @@ Figures: `docs/figures/success_vs_sun_and_scale.png`, `docs/figures/demo_quicklo
 | 30 Sep | Sub-pixel refinement uses windowed cross-correlation, not phase correlation | Unit test: phase correlation under-estimated a known 0.37 px shift by ~40%; cross-correlation error ≤ 0.05 px |
 | 30 Sep | Source points stay fixed during refinement; only reference points move | Keeps the source-side distribution intact and works for any transform model |
 | 30 Sep | Coarse alignment from each Ch-2 product's geometry grid (lat/lon every 100 px) mapped into NAC polar-stereographic pixels with a 3rd-order polynomial | Uses only product metadata, no GDAL/ISIS needed; 0.12 px fit, ~23 m absolute offset on p01a |
+| 30 Sep | Illumination fix = Option A: render the LROC NAC DTM under the SOURCE sun (PDS4 label) and match the source to that render | Physics-based, no training; turns failed pairs into 2–2.5 m registrations; also exposes km-level Ch-2 geolocation errors |
+| 30 Sep | Coarse localisation by NCC of the sun-matched render over a ±9 km search | Photo-to-photo correlation fails under different sun; render-to-photo peak 0.86–0.90 vs ~0 at the metadata position |
+| 30 Sep | Calibrate the DTM-vs-ortho offset per site by rendering at the reference's own sun | Removed a measured 5.4 m bias; two independent estimates agree within 0.1 m |
+| 30 Sep | World files: south-polar y is +ρcos (sign bug fixed) | Verified against the DTM GeoTIFF tiepoint |
 | 30 Sep | Final model poly3 for OHRC over this terrain | 0.45–0.55 px vs 0.74–0.85 px for homography on held-out points |
 | 30 Sep | Checkpoints are 25% of inliers, stratified by 8×8 cell, never used to fit | Honest accuracy; the fit RMSE is reported beside it |
 
 ## Open questions
 
-1. DTM files: `NAC_DTM_VIKRAMSITE1.TIF` (and `NAC_DTM_APOLLO11.TIF`) still to download; needed for the sun-angle fix and orthorectification.
-2. NAC reference sun angles: not in the ortho label; get from the NAC EDR labels (M1442997156, M1443025251).
+1. Accuracy ceiling of the render path is the 3 m NAC DTM. A finer DTM (e.g. OHRC stereo DEM ~0.3 m, as in arXiv 2602.14993) would push hard pairs toward sub-metre.
+2. Is the 1–4 km Chandrayaan-2 geolocation error typical? Worth checking on more products; it's a strong, reportable finding if so.
 3. Exact idea-submission deadline on the SIH portal.
-4. Which illumination fix to build first (A: DTM relighting + shadow filtering, recommended; B: learned dense matcher).
 
 ## Next three tasks
 
-1. **Aranyak Dutta:** download `NAC_DTM_VIKRAMSITE1.TIF` into `data/raw/pair01_ch3site/`; decide A or B.
-2. **Claude:** run SuperPoint + LightGlue on p01a/p01b/p03 on the RTX 4050 (needs a run on the laptop venv) as the learned baseline row.
-3. **Claude:** build the chosen illumination fix and re-run p01b/p03 + the synthetic sun sweep; add rows to the ablation table.
+1. **Claude:** two-stage fine refinement (after the render-based 2 m registration, refine against the NAC photo in small patches where lighting allows) and add the synthetic sun-sweep row for the render path, so the deck has the success-vs-sun-angle chart with and without Option A.
+2. **Claude:** SuperPoint + LightGlue row on the laptop GPU (needs a run in the venv) for the learned-matcher comparison.
+3. **Aranyak Dutta:** commit (`git add . && git commit -m "Option A: sun-matched DTM rendering"`), confirm the idea-submission deadline, then start the deck skeleton with the figures in `docs/figures/`.

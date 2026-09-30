@@ -56,12 +56,15 @@ def warp_to_reference(src: np.ndarray, T: Transform, ref_shape: tuple[int, int])
 
 
 def register(src_img: np.ndarray, ref_img: np.ndarray, cfg: dict,
-             scale_hint: float | None = None) -> dict:
+             scale_hint: float | None = None, extra_src_mask: np.ndarray | None = None,
+             extra_ref_mask: np.ndarray | None = None) -> dict:
     """Register `src_img` to `ref_img`.
 
     scale_hint: source pixel size / reference pixel size (e.g. 1 m / 4 m = 0.25).
                 When given (normally from product labels) the source is resized by
                 it before matching, which removes most of the scale difference.
+    extra_src_mask / extra_ref_mask: optional boolean masks (True = detection allowed), e.g.
+                predicted cast-shadow edges from a DTM; combined with the darkness mask.
     Returns a dict with transform, matches, metrics, timings and the warped image.
     """
     t0 = time.perf_counter()
@@ -79,9 +82,13 @@ def register(src_img: np.ndarray, ref_img: np.ndarray, cfg: dict,
     t = time.perf_counter()
     mcfg = cfg.get("matching", {})
     use_masks = cfg.get("preprocess", {}).get("shadow", {}).get("mask_matches", True)
-    ms, mr, sc = matching.match(src_s, ref_prep, mcfg,
-                                ~src_shadow_s if use_masks else None,
-                                ~ref_shadow if use_masks else None)
+    sm = ~src_shadow_s if use_masks else np.ones(src_s.shape, bool)
+    rm = ~ref_shadow if use_masks else np.ones(ref_prep.shape, bool)
+    if extra_src_mask is not None:
+        sm &= preprocess.resize(extra_src_mask.astype(np.float32), s) > 0.5
+    if extra_ref_mask is not None:
+        rm &= extra_ref_mask
+    ms, mr, sc = matching.match(src_s, ref_prep, mcfg, sm, rm)
     n_tent = len(ms)
     timing["matching_s"] = time.perf_counter() - t
 

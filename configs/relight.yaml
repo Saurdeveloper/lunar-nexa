@@ -1,0 +1,57 @@
+# Baseline registration config (Phase 4). Every parameter used by src/pipeline.py.
+seed: 42
+use_scale_hint: true          # resize source by (source px size / reference px size) before matching
+
+preprocess:
+  clahe: {enabled: true, clip: 2.0, tile: 8}
+  shadow: {enabled: true, mask_matches: true, dark_pct: 5.0, abs_thresh: 0.04, edge_px: 3}
+
+matching:
+  method: akaze                # sift | rootsift | akaze | orb | lightglue
+  ratio: 0.85                 # Lowe ratio test
+  mutual: true                # keep only mutual nearest neighbours
+  contrast_threshold: 0.01
+  detect_grid: 16             # keypoints are thinned per cell so every region gets candidates
+  per_cell: 40
+  max_features: 4096          # lightglue / orb
+
+robust:
+  method: magsac              # magsac | ransac | usac
+  model: homography           # model used for inlier selection
+  thresh_px: 3.0              # reference pixels
+
+distribution:
+  enabled: true
+  grid: 8
+  per_cell: 12
+
+subpixel:
+  enabled: true
+  patch: 32
+  upsample: 20
+  max_shift: 2.0
+  iterations: 2
+  use_gradient: false
+  normalization: null        # null = windowed cross-correlation (unbiased); "phase" = phase correlation
+  inner_iters: 1
+  drop_unrefined: true
+
+final_model: poly3       # affine | homography | poly2 | poly3
+final_thresh_px: 1.5
+
+evaluation:
+  holdout: 0.25               # share of inliers held out as checkpoints (stratified by 8x8 cell)
+  grid: 8
+  ref_px_size_m: null         # set from the product label to report RMSE in metres
+
+quality:                      # flags weak results instead of silently returning them
+  min_inliers: 20
+  max_checkpoint_rmse_px: 1.0
+
+warp: true
+
+relight:                      # novelty 1: match against the DTM rendered at the SOURCE sun
+  work_px: 3                 # matching grid in reference pixels; null = DTM spacing (3 m)
+  shadow_filter: false        # novelty 2: drop detections on DTM-predicted cast-shadow edges
+  shadow_edge_px: 2
+  use_calibration: true       # subtract the measured DTM-vs-ortho offset (dtm_calibration.json)
