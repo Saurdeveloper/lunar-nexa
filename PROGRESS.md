@@ -8,9 +8,10 @@
 
 ## Where we are
 
-- **Phase 1 (Setup):** code and configs done. Exit check still pending on the laptop: rebuild `.venv` on Python 3.11 per README, run `python -m src.hello`.
-- **Phase 2 (Data):** blocked. The session's network allowlist blocks ISSDC, LROC, JAXA, PyPI and GitHub. Waiting for the official dataset, either as files in `data/raw/` or a link plus allowlist change.
-- **Phase 4 (Baseline):** built ahead of data. The full pipeline and CLI run on synthetic lunar pairs with exact ground truth. Phase 4 exit (real pairs) is still pending.
+- **Phase 1 (Setup): PASSED.** Python 3.11 venv (uv), numpy 1.26.4, one OpenCV (4.10 contrib headless), torch 2.5.1 + CUDA; `src.hello` and 4/4 tests pass; first commit "baseline pipe".
+- **Phase 2 (Data): PASSED for pairs p01a, p01b, p03.** Downloaded by Aranyak from chmapbrowse + LROC Data Portal (see `docs/DATA_CHECKLIST.md`); zips tested; manifest filled. Missing: DTM `.TIF` files for both sites, Apollo 11 OHRC strip.
+- **Phase 3 (Coarse alignment): PASSED for p01a** (metadata-only offset ≈ 23 m / 23 NAC px). `src/prep_pair.py` cuts the site from the Ch-2 zip and NAC .IMG and maps the Ch-2 image onto the NAC grid using the product's geometry grid (grid fit RMS 0.12 px). p01b and p03 coarse offsets not yet verified (phase correlation fails under their lighting).
+- **Phase 4 (Baseline): PASSED on p01a, FAILS on p01b and p03.** See real results below.
 
 ## Plan
 
@@ -33,6 +34,19 @@
 - `src/labels.py`: extracts sun angles, resolution and corners from PDS4/PDS3 labels.
 - 4 unit tests pass (transform fitting, outlier rejection, known sub-pixel shift, checkpoint split).
 - Quality gate: a result is flagged if it has fewer than 20 inliers or checkpoint RMSE above 1 px. On the benchmark it caught the one silent failure; it also flagged 14 correct but weak runs.
+
+## Results: real pairs (Chandrayaan-3 landing site, reference NAC M1442997156 ortho, 2023-07-03)
+
+| Pair | Source | Sun az / el | Best matcher | Inliers | Checkpoint RMSE | Sub-px rate | Coverage | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| p01a | OHRC 2024-04-25, 0.26 m | 304° / 10.8° | AKAZE + poly3 | 509 (53%) | **0.55 px (≈0.55 m)** | 94% | 98% | pass |
+| p01a | same | same | SIFT + poly3 | 152 (39%) | 0.45 px | 97% | 80% | pass |
+| p01b | OHRC 2023-10-03, 0.22 m | 277° / **2.2°** | all three | ≤6 | – | – | – | **fail** |
+| p03 | TMC-2 2023-01-30, 4.72 m | **53°** / 17.2° | all three | ≤6 | – | – | – | **fail** |
+
+On p01a, homography gives 0.74–0.85 px vs poly3 0.45–0.55 px: terrain and along-track (N–S) residual pattern, so a local model / orthorectification with the DTM is the next accuracy gain. Full table: `results/real_baseline/real_results.md`.
+
+**Real data confirms the synthetic finding:** the baseline breaks under strong illumination change (2° sun; ~109° azimuth difference). Open check: whether p03 also has a larger metadata offset (TMC-2 geolocation) — needs an illumination-robust coarse step to tell.
 
 ## Results: synthetic baseline (69 pairs per method, exact ground truth)
 
@@ -62,17 +76,19 @@ Figures: `docs/figures/success_vs_sun_and_scale.png`, `docs/figures/demo_quicklo
 | 30 Sep | Build and benchmark on synthetic pairs before real data | Data download blocked; synthetic truth also gives exact error, needed for the sun/scale plots anyway |
 | 30 Sep | Sub-pixel refinement uses windowed cross-correlation, not phase correlation | Unit test: phase correlation under-estimated a known 0.37 px shift by ~40%; cross-correlation error ≤ 0.05 px |
 | 30 Sep | Source points stay fixed during refinement; only reference points move | Keeps the source-side distribution intact and works for any transform model |
+| 30 Sep | Coarse alignment from each Ch-2 product's geometry grid (lat/lon every 100 px) mapped into NAC polar-stereographic pixels with a 3rd-order polynomial | Uses only product metadata, no GDAL/ISIS needed; 0.12 px fit, ~23 m absolute offset on p01a |
+| 30 Sep | Final model poly3 for OHRC over this terrain | 0.45–0.55 px vs 0.74–0.85 px for homography on held-out points |
 | 30 Sep | Checkpoints are 25% of inliers, stratified by 8×8 cell, never used to fit | Honest accuracy; the fit RMSE is reported beside it |
 
 ## Open questions
 
-1. Official dataset: files or link from Aranyak.
-2. Network allowlist: allow PyPI, PyTorch, GitHub, ISSDC, LROC, JAXA for this project, or keep providing files manually.
+1. DTM files: `NAC_DTM_VIKRAMSITE1.TIF` (and `NAC_DTM_APOLLO11.TIF`) still to download; needed for the sun-angle fix and orthorectification.
+2. NAC reference sun angles: not in the ortho label; get from the NAC EDR labels (M1442997156, M1443025251).
 3. Exact idea-submission deadline on the SIH portal.
-4. Which illumination novelty to build first (see next tasks).
+4. Which illumination fix to build first (A: DTM relighting + shadow filtering, recommended; B: learned dense matcher).
 
 ## Next three tasks
 
-1. **Aranyak Dutta:** put 1–3 official pairs (images + labels) in `data/raw/pairNN/`, or share the link.
-2. **Aranyak Dutta:** rebuild `.venv` on Python 3.11 and run `python -m src.hello` and `python -m pytest -q tests`.
-3. **Claude:** once data lands, run Phases 2–4 on the real pairs, add the SuperPoint + LightGlue comparison on the GPU, then prototype the chosen illumination fix, measured on the same sweep.
+1. **Aranyak Dutta:** download `NAC_DTM_VIKRAMSITE1.TIF` into `data/raw/pair01_ch3site/`; decide A or B.
+2. **Claude:** run SuperPoint + LightGlue on p01a/p01b/p03 on the RTX 4050 (needs a run on the laptop venv) as the learned baseline row.
+3. **Claude:** build the chosen illumination fix and re-run p01b/p03 + the synthetic sun sweep; add rows to the ablation table.

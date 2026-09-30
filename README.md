@@ -34,7 +34,7 @@ uv venv --python 3.11 .venv
 source .venv/bin/activate
 uv pip install torch==2.5.1 torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu124
 uv pip install -r requirements.txt
-uv pip install "lightglue @ git+https://github.com/cvg/LightGlue.git"
+uv pip install --no-deps "lightglue @ git+https://github.com/cvg/LightGlue.git"   # --no-deps: stops it pulling a second OpenCV and numpy 2.x
 python -m src.hello          # prints GPU and "Phase 1 check passed"
 python -m pytest -q tests    # 4 tests
 ```
