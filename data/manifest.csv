@@ -1,0 +1,1 @@
+pair_id,site,source_sensor,source_product_id,source_res_m,source_sun_az_deg,source_sun_el_deg,source_date,reference_sensor,reference_product_id,reference_res_m,reference_sun_az_deg,reference_sun_el_deg,reference_date,sun_az_diff_deg,sun_el_diff_deg,scale_ratio,overlap_wkt,notes

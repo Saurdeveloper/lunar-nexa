@@ -1,0 +1,7 @@
+# Global defaults. Every run copies its resolved config into results/<run_id>/.
+seed: 42
+paths:
+  raw: data/raw
+  processed: data/processed
+  results: results
+  manifest: data/manifest.csv
