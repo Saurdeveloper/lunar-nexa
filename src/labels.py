@@ -99,7 +99,10 @@ def parse_label(path: str | Path) -> dict:
     d["path"] = str(path)
     return d
 
-
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python -m src.labels <file_path_1> [file_path_2 ...]", file=sys.stderr)
+        sys.exit(1)
+
     for p in sys.argv[1:]:
         print(json.dumps(parse_label(p), indent=2, default=str))
